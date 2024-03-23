@@ -1,22 +1,13 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Display Packages</title>
-    <!-- Include any CSS files or stylesheets here -->
-</head>
-<body>
-    <div class="header">
-        <img src="/parcelpirate.png" alt="Logo" class="logo">
-        <div class="title-and-nav">
-            <div class="site-title">Parcel Pirate</div>
-            <!-- Include any navigation menu if needed -->
-        </div>
-    </div>
-    <h2>Display Packages</h2>
-    
-    <div class="packages">
+@extends('layout')
+
+@section('title', 'Display Packages')
+
+@section('content')
+
+@foreach ($statuses as $status)
+
+    <div class="status-section">
+        <div class="status-title">{{ $status->package_status_name }}</div>
         <table>
             <tr>
                 <th>Package ID</th>
@@ -29,13 +20,13 @@
                 <th>Package Value</th>
                 <!-- Add more table headers as needed -->
             </tr>
-            @foreach($packages as $package)
+            @foreach ($status->packages as $package)
             <tr>
                 <td>{{ $package->id }}</td>
-                <td>{{ $package->Userid }}</td>
+                <td>{{ $package->UserID }}</td>
                 <td>{{ $package->TrackingNumber }}</td>
                 <td>{{ $package->Carrier }}</td>
-                <td>{{ $package->Description }}</td>
+                <td>{!! nl2br(e($package->Description)) !!}</td>
                 <td>{{ $package->PackageImage }}</td>
                 <td>{{ $package->PackageInvoiceImage }}</td>
                 <td>{{ $package->PackageValue }}</td>
@@ -44,5 +35,11 @@
             @endforeach
         </table>
     </div>
-</body>
-</html>
+@endforeach
+
+
+
+
+
+
+    @endsection

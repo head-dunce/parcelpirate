@@ -6,7 +6,9 @@ use Illuminate\Http\Request;
 use PDO;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 use Imagick;
+use PDOException;
 
 class AmazonInvoiceController extends Controller
 {
@@ -26,6 +28,7 @@ class AmazonInvoiceController extends Controller
             $stmtUsers->execute();
             $users = $stmtUsers->fetchAll(PDO::FETCH_ASSOC);
 
+       
             return view('amazon-invoice.amazon-invoice', ['users' => $users]);
 
         } catch(PDOException $e) {
@@ -36,18 +39,21 @@ class AmazonInvoiceController extends Controller
     public function upload(Request $request)
     {
         try {
-            $uploadDirectory = "/var/www/html/uploads/";
+
+
+            $uploadDirectory = "/var/www/html/ParcelPirate/public/uploads/";
+            $convertedText = '';
 
             if ($request->hasFile('pdfFile') && $request->file('pdfFile')->isValid()) {
+                if (!is_dir($uploadDirectory) && !mkdir($uploadDirectory, 0755, true) && !is_dir($uploadDirectory)) {
+                    throw new \RuntimeException('Failed to create upload directory.');
+                }
+
                 $originalFileName = $request->file('pdfFile')->getClientOriginalName();
                 $fileType = strtolower($request->file('pdfFile')->getClientOriginalExtension());
                 $uniqueName = uniqid("amazon_", true);
                 $uniqueFileName = $uniqueName . '.' . $fileType;
                 $targetFile = $uploadDirectory . $uniqueFileName;
-
-                if (!is_dir($uploadDirectory) && !mkdir($uploadDirectory, 0755, true) && !is_dir($uploadDirectory)) {
-                    throw new \RuntimeException('Failed to create upload directory.');
-                }
 
                 if ($fileType !== 'pdf') {
                     return "Sorry, only PDF files are allowed.";
@@ -106,33 +112,97 @@ class AmazonInvoiceController extends Controller
                         }
                     }
 
-                    // Proceed with OCR and data extraction
-                    // This part should include your OCR logic, pattern matching, and data extraction
+                    // Display the array of line break positions
+                    echo "Line Break Positions:\n";
+                    print_r($breakPositions);
 
-                    // Placeholder for extracted data
-                    $orderPlaced = "Date";
-                    $orderNumber = "Order Number";
-                    $description = "Description"; // Placeholder for description
-                    $totalcost = 0; // Placeholder for total cost
+                    // Proceed only if line breaks are found
+                    if (!empty($breakPositions)) {
+                        // Split and save each part of the image
+                        $lastPosition = 0;
+                        $orderPlaced = '';
+                        $orderNumber = '';
+                        foreach ($breakPositions as $index => $position) {
+                            $segmentHeight = $position - $lastPosition;
+                            $segment = clone $image;
+                            $segment->cropImage($width, $segmentHeight, 0, $lastPosition);
+                            
+                            $segmentFilePath = $uploadDirectory.$uniqueName."-part-{$index}.jpg";
 
-                    // Database insertion
-                    DB::beginTransaction();
-                    $packageId = DB::table('packages')->insertGetId([
-                        'UserID' => auth()->user()->id, // Assuming this is the correct field to get the user ID from the authenticated user
-                        'PackageInvoiceImage' => $targetFile,
-                        'Description' => $description,
-                        'PackageValue' => $totalcost,
-                        // Add other fields as needed
-                    ]);
+                            $segment->writeImage($segmentFilePath);
+                            $lastPosition = $position + 1; // Move past the detected line
+                            $segment->clear(); // Clear memory
 
-                    DB::table('package_status')->insert([
-                        'package_id' => $packageId,
-                        'status_id' => 1, // Assuming the status_id for "Purchased" is 5
-                    ]);
+                            $ocrOutput = shell_exec("tesseract $segmentFilePath stdout -l eng");
 
-                    // Commit transaction
-                    DB::commit();
 
+                            // Extract details on the first loop iteration
+                            if ($index === 0) { // Check if it's the first iteration
+                                // Extracting order placed date
+                                if (preg_match("/Order Placed: (\w+ \d+, \d{4})/", $ocrOutput, $dateMatches)) {
+                                    $orderPlaced = $dateMatches[1];
+                                } else {
+                                    $orderPlaced = "Not Found";
+                                }
+                                // Extracting order number
+                                if (preg_match("/order number: (\d+-\d+-\d+)/", $ocrOutput, $numberMatches)) {
+                                    $orderNumber = $numberMatches[1];
+                                } else {
+                                    $orderNumber = "Not Found";
+                                }
+                            } else {
+
+                                $description = "Amazon Order Number: $orderNumber\n";
+
+                                // Define a pattern to match "Shipped on [Month Name] [Day], [Year]"
+                                $shippingDatePattern = '/Shipped on (\w+ \d{1,2}, \d{4})/';
+
+                                // Search for the shipping date
+                                if (preg_match($shippingDatePattern, $ocrOutput, $dateMatches)) {
+                                    $description .= "Shipped on " . $dateMatches[1] . "\n";
+                                }
+
+                                $totalcost = 0;
+                                $pattern = '/(\d+) of: (.*?) \$(\d+\.\d{2})/';
+                                preg_match_all($pattern, $ocrOutput, $matches, PREG_SET_ORDER);
+                                $items = [];
+                                foreach ($matches as $match) {
+                                    $description .= "\nITEM: ".trim($match[2]);
+                                    $quantity = (int)$match[1];
+                                    $costeach = $match[3];
+                                    $description .= "\nQUANTITY: ".$quantity;
+                                    $description .= "\nCOST: ";
+                                    if( $quantity == 1){
+                                        $description .= $costeach;
+                                        $totalcost = $totalcost + $costeach;
+                                    } else {
+                                        $subtotal = $costeach * $quantity;
+                                        $totalcost = $totalcost + $subtotal;
+                                        $description .= "$costeach x $quantity = $subtotal";
+                                    }
+                                    $description .= "\n";
+                                }
+
+                               // Database insertion
+                                DB::beginTransaction();
+                                $packageId = DB::table('packages')->insertGetId([
+                                    'UserID' => auth()->id(), // Assuming this is the correct field to get the user ID from the authenticated user
+                                    'PackageInvoiceImage' => $segmentFilePath,
+                                    'Description' => $description,
+                                    'PackageValue' => $totalcost,
+                                    // Add other fields as needed
+                                ]);
+
+                                DB::table('package_status')->insert([
+                                    'package_id' => $packageId,
+                                    'status_id' => 1, 
+                                ]);
+                                // Commit transaction
+                                DB::commit();
+                            }
+
+                        }
+                    }
                     return "Invoice uploaded successfully.";
                 } else {
                     return "Sorry, there was an error uploading your file.";
@@ -140,6 +210,8 @@ class AmazonInvoiceController extends Controller
             } else {
                 return "No file uploaded or file is invalid.";
             }
+
+
         } catch (\Exception $e) {
             // Rollback transaction if an error occurs
             DB::rollBack();
@@ -147,4 +219,3 @@ class AmazonInvoiceController extends Controller
         }
     }
 }
-

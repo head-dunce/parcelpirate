@@ -10,7 +10,9 @@ class PackageController extends Controller
     public function index()
     {
         $packages = Package::all();
-        $statuses = StatusName::orderBy('sort_order', 'ASC')->get();
+        //$statuses = StatusName::orderBy('sort_order', 'ASC')->get();
+        $statuses = StatusName::with('packages')->orderBy('sort_order', 'ASC')->get();
+
         return view('packages.index', compact('packages', 'statuses'));
     }
 
