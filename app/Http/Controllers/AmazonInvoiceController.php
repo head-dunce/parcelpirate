@@ -36,34 +36,34 @@ class AmazonInvoiceController extends Controller
         }
     }
 
+
+
     public function upload(Request $request)
     {
         try {
-
-
-            $uploadDirectory = "/var/www/html/ParcelPirate/public/uploads/";
             $convertedText = '';
 
             if ($request->hasFile('pdfFile') && $request->file('pdfFile')->isValid()) {
-                if (!is_dir($uploadDirectory) && !mkdir($uploadDirectory, 0755, true) && !is_dir($uploadDirectory)) {
-                    throw new \RuntimeException('Failed to create upload directory.');
-                }
-
                 $originalFileName = $request->file('pdfFile')->getClientOriginalName();
                 $fileType = strtolower($request->file('pdfFile')->getClientOriginalExtension());
-                $uniqueName = uniqid("amazon_", true);
-                $uniqueFileName = $uniqueName . '.' . $fileType;
-                $targetFile = $uploadDirectory . $uniqueFileName;
-
                 if ($fileType !== 'pdf') {
                     return "Sorry, only PDF files are allowed.";
                 }
 
-                if (move_uploaded_file($request->file('pdfFile')->getPathname(), $targetFile)) {
-                    // Construct and execute the conversion command
-                    $imageFilePath = $uploadDirectory . $uniqueName . '.jpg';
-                    $convertCommand = "convert -density 300 -append '$targetFile' -trim +repage -units PixelsPerInch '$imageFilePath'";
-                    shell_exec($convertCommand);
+                $uniqueName = uniqid("amazon_", true);
+                $uniqueFileName = $uniqueName . '.' . $fileType;
+    
+                // Store the PDF
+                $path = $request->file('pdfFile')->storeAs('uploads', $uniqueFileName, 'public');
+                $pdfFilePath = storage_path('app/public/' . $path);
+
+                // Prepare the target image file path
+                $imageFilePath = storage_path('app/public/uploads/' . $uniqueName . '.jpg');
+
+                // Construct and execute the conversion command
+                $convertCommand = "convert -density 300 -append '$pdfFilePath' -trim +repage -units PixelsPerInch '$imageFilePath'";
+                shell_exec($convertCommand);
+                unlink($pdfFilePath);
 
                     // Initialize variables for OCR
                     $imagePath = $imageFilePath;
@@ -127,14 +127,21 @@ class AmazonInvoiceController extends Controller
                             $segment = clone $image;
                             $segment->cropImage($width, $segmentHeight, 0, $lastPosition);
                             
-                            $segmentFilePath = $uploadDirectory.$uniqueName."-part-{$index}.jpg";
+                            // Define the segment file path within Laravel's storage system
+                            $segmentFileName = $uniqueName . "-part-{$index}.jpg";
+                            $segmentFilePath = 'uploads/' . $segmentFileName;
 
-                            $segment->writeImage($segmentFilePath);
+                            // Use the storage facade to determine the absolute path
+                            $absoluteSegmentFilePath = storage_path('app/public/' . $segmentFilePath);
+
+                            // Save the segment image
+                            $segment->writeImage($absoluteSegmentFilePath);
                             $lastPosition = $position + 1; // Move past the detected line
                             $segment->clear(); // Clear memory
 
-                            $ocrOutput = shell_exec("tesseract $segmentFilePath stdout -l eng");
-
+                            // Run OCR on the saved image segment
+                            //$ocrOutput = shell_exec("tesseract " . escapeshellarg($absoluteSegmentFilePath) . " stdout -l eng");
+                            $ocrOutput = shell_exec("tesseract " . escapeshellarg($absoluteSegmentFilePath) . " stdout -l eng --psm 6");
 
                             // Extract details on the first loop iteration
                             if ($index === 0) { // Check if it's the first iteration
@@ -150,6 +157,7 @@ class AmazonInvoiceController extends Controller
                                 } else {
                                     $orderNumber = "Not Found";
                                 }
+                                unlink( $absoluteSegmentFilePath );
                             } else {
 
                                 $description = "Amazon Order Number: $orderNumber\n";
@@ -186,35 +194,28 @@ class AmazonInvoiceController extends Controller
                                // Database insertion
                                 DB::beginTransaction();
                                 $packageId = DB::table('packages')->insertGetId([
-                                    'UserID' => auth()->id(), // Assuming this is the correct field to get the user ID from the authenticated user
+                                    'user_id' => auth()->id(), // Assuming this is the correct field to get the user ID from the authenticated user
                                     'PackageInvoiceImage' => $segmentFilePath,
                                     'Description' => $description,
                                     'PackageValue' => $totalcost,
-                                    // Add other fields as needed
+                                    'status_id' => 1,
                                 ]);
 
-                                DB::table('package_status')->insert([
-                                    'package_id' => $packageId,
-                                    'status_id' => 1, 
-                                ]);
                                 // Commit transaction
                                 DB::commit();
                             }
 
                         }
                     }
-                    return "Invoice uploaded successfully.";
-                } else {
-                    return "Sorry, there was an error uploading your file.";
-                }
+                    //return "Invoice uploaded successfully.";
+                    unlink( $imageFilePath );
+                    return redirect()->route('packages.index')->with('success', 'Amazon Invoice added successfully.');
             } else {
                 return "No file uploaded or file is invalid.";
             }
 
 
         } catch (\Exception $e) {
-            // Rollback transaction if an error occurs
-            DB::rollBack();
             return "Error: " . $e->getMessage();
         }
     }

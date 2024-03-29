@@ -1,4 +1,5 @@
 <?php
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -11,6 +12,8 @@ class CreateStatusNamesTable extends Migration
             $table->id();
             $table->string('package_status_name');
             $table->integer('sort_order')->nullable();
+            $table->boolean('print_export')->default(false);
+            $table->timestamps(); // Add this line for timestamps
         });
     }
 

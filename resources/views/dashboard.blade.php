@@ -1,17 +1,13 @@
-<x-app-layout>
-    <x-slot name="header">
-        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-            {{ __('Dashboard') }}
-        </h2>
-    </x-slot>
+@extends('layout')
 
-    <div class="py-12">
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                <div class="p-6 text-gray-900">
-                    {{ __("You're logged in!") }}
-                </div>
-            </div>
-        </div>
-    </div>
-</x-app-layout>
+@section('title', 'Welcome to Parcel Pirate')
+
+@section('content')
+
+<div class="status-section">
+
+<b>Ahoy, Matey!</b> <br>
+Ye've successfully boarded the ship and are now part of our crew! Welcome aboard, ye scallywag! Ye're logged in and ready to set sail on the grand adventure. Hoist the colors and let's navigate these digital seas together, arrr!
+</div>
+
+@endsection

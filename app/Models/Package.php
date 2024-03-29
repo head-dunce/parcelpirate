@@ -9,11 +9,21 @@ class Package extends Model
 {
     use HasFactory;
 
-    public function statuses()
+    protected $fillable = [
+        'TrackingNumber', 'Carrier', 'Description', 'PackageValue', 'status_id', 'PackageImage', 'PackageInvoiceImage',
+    ];
+
+    public function status()
     {
-        return $this->belongsToMany(StatusName::class, 'package_status', 'package_id', 'status_id')
-                    ->withTimestamps('timestamp');
+        return $this->belongsTo(StatusName::class, 'status_id');
     }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id'); 
+    }
+
+
 }
 
 

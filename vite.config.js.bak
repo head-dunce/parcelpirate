@@ -1,0 +1,25 @@
+import { defineConfig } from 'vite';
+import laravel from 'laravel-vite-plugin';
+
+export default defineConfig({
+    server: {
+        host: '0.0.0.0', // Listen on all interfaces
+        port: 3000, // Use a different port for Vite
+    },
+    plugins: [
+        laravel({
+            input: [
+                'resources/css/app.css',
+                'resources/js/app.js',
+            ],
+            refresh: true,
+        }),
+    ],
+    proxy: {
+        '/': {
+            target: 'https://www.parcelpirate.com', // Point to your Laravel application
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/+/, ''),
+        },
+    },
+});

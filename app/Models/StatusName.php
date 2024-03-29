@@ -9,12 +9,26 @@ class StatusName extends Model
 {
     use HasFactory;
 
-    // The table name is explicitly defined because Laravel would pluralize StatusName to status_names by default
-    protected $table = 'status_names';
+    //public function packages()
+    //{
+    //    return $this->hasMany(Package::class, 'status_id');
+    //}
 
-    // Relationship to Package through package_status pivot table
     public function packages()
     {
-        return $this->belongsToMany(Package::class, 'package_status', 'status_id', 'package_id');
+        return $this->hasMany(Package::class, 'status_id')->orderBy('created_at', 'desc');
     }
+
+
+    // The table name is explicitly defined
+    protected $table = 'status_names';
+
+    // Define which model attributes can be mass-assigned
+    protected $fillable = [
+        'package_status_name', 
+        'sort_order', 
+        'print_export',
+    ];
+
+
 }

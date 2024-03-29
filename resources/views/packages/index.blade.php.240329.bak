@@ -1,0 +1,194 @@
+@extends('layout')
+
+@section('title', 'Display Parcels')
+
+@section('content')
+
+@if (!empty($packagesWithDuplicates))
+    <div class="status-section" style="background-color: darkred;">
+        <div class="status-title">WARNING: Duplicate Tracking Numbers</div>
+        <p>These parcels share the same tracking number. This might indicate that the store bundled these orders together, or there could have been an error in entering the parcel. If these parcels were bundled and shipped together, you can merge their information by clicking the 'Combine Parcels' button. If the tracking number was entered incorrectly, or the parcel was duplicated, you can click on 'Edit' on the right of the parcel to correct it.</p>
+        @foreach ($packagesWithDuplicates as $trackingNumber => $packages)
+            <div class="duplicate-group">
+                <h3>Tracking Number: {{ $trackingNumber }}</h3>
+
+                <form method="post" action="{{ route('combine.index') }}">
+                        @csrf
+                        <input type="hidden" name="trackingNumber" value="{{ $trackingNumber }}">
+                        <button type="submit" name="combinePackages">Combine Parcels</button>
+                </form>
+
+                <div class="table-container">
+                <table>
+                    <tr>
+                        <th>Tracking Number</th>
+                        <th>Carrier</th>
+                        <th>Value</th>
+                        <th>Description</th>
+                        <th>Invoice Image</th>
+                        <th>Parcel Image</th>
+                        <th>Edit</th>
+                    </tr>
+                    @foreach ($packages as $package)
+                        <tr>
+                            <td>{{ $package->TrackingNumber }}</td>
+                            <td>{{ $package->Carrier }}</td>
+                            <td>{{ $package->PackageValue }}</td>
+                            <td>{!! nl2br(e($package->Description)) !!}</td>
+                            <td>
+                                @if(!empty($package->PackageInvoiceImage))
+                                    <a href="{{ asset('storage/' . $package->PackageInvoiceImage) }}"><img src="{{ asset('storage/' . $package->PackageInvoiceImage) }}" alt="Invoice Image" class="package-image"></a>
+                                @else
+                                    No image
+                                @endif
+                            </td>
+                            <td>
+                                @if(!empty($package->PackageImage))
+                                    <a href="{{ asset('storage/' . $package->PackageImage) }}"><img src="{{ asset('storage/' . $package->PackageImage) }}" alt="Package Image" class="package-image"></a>
+                                @else
+                                    No image
+                                @endif
+                            </td>
+                            <td>
+                                @auth
+                                    @if(auth()->user()->hasVerifiedEmail())
+                                        <a href="{{ url('/packages/edit/'.$package->id) }}">Edit</a>
+                                    @else
+                                        <div class="info">Please verify your email to edit parcels.</div>
+                                    @endif
+                                @endauth
+                                @guest
+                                    <div class="info">Please <a href="{{ route('login') }}" style="color: #E5BE01; text-decoration: underline;">login</a> to edit parcels.</div>
+                                @endguest
+                            </td>
+                        </tr>
+                    @endforeach
+                </table>
+                <div class="table-container">
+            </div>
+        @endforeach
+    </div>
+@endif
+
+
+
+@foreach ($statuses as $status)
+
+    <div class="status-section">
+        <div class="status-title">{{ $status->package_status_name }}</div>
+
+        @if ($status->id == 9 && $status->packages->isNotEmpty())
+            <form method="POST" action="{{ route('packages.deleteStatusNine') }}" onsubmit="return confirm('Are you sure you want to delete all parcels in the Recycle Bin?');">
+                @csrf
+                <button type="submit" class="btn btn-danger">Delete all parcels in the Recycle Bin</button>
+            </form>
+        @endif
+
+        
+        <form method="post" action="{{ route('status.update.bulk') }}">
+            @csrf <!-- CSRF token for security -->
+            <input type="hidden" name="currentStatusID" value="{{ $status->id }}">
+            Change all {{ $status->package_status_name }} statuses to:
+            <select name="bulkNewStatusID">
+                @foreach ($statuses as $statusOption)
+                    @if ($statusOption->id != $status->id)
+                        <option value="{{ $statusOption->id }}">{{ $statusOption->package_status_name }}</option>
+                    @endif
+                @endforeach
+            </select>
+
+            @auth
+                @if(auth()->user()->hasVerifiedEmail())
+                    <button type="submit" name="update_bulk">Update All</button>
+                @else
+                    <div class="info">Please verify your email to update parcels.</div>
+                @endif
+            @endauth
+            @guest
+                <div class="info">Please <a href="{{ route('login') }}" style="color: #E5BE01; text-decoration: underline;">login</a> to create and update your parcels.</div>
+            @endguest
+
+        </form>
+        </form>
+        <div class="table-container">
+            <table>
+                <tr>
+                    <th class="hide-on-mobile">Status</th>
+                    <th class="parcel-td-mobile">Tracking Number</th>
+                    <th class="hide-on-mobile">Carrier</th>
+                    <th class="parcel-td-mobile">Value</th>
+                    <th class="parcel-td-mobile">Description</th>
+                    <th class="hide-on-mobile">Invoice Image</th>
+                    <th class="hide-on-mobile">Parcel Image</th>
+                    <th class="parcel-td-mobile">Edit</th>
+                </tr>
+
+                @foreach ($status->packages as $package)
+                <tr>
+                    <form method="post" action="{{ route('packages.updateStatus', ['package' => $package->id]) }}">
+                        @csrf
+                        <td class="hide-on-mobile">
+                            <select name="newStatusID">
+                                @foreach ($statuses as $statusOption)
+                                    <option value="{{ $statusOption->id }}" {{ $statusOption->id == $status->id ? 'selected' : '' }}>{{ $statusOption->package_status_name }}</option>
+                                @endforeach
+                            </select>
+                            <input type="hidden" name="packageID" value="{{ $package->id }}">
+
+                            @auth
+                                @if(auth()->user()->hasVerifiedEmail())
+                                    <button type="submit" name="update_single">Update</button>
+                                @else
+                                    <div class="info">Please verify your email to update parcels.</div>
+                                @endif
+                            @endauth
+                            @guest
+                                <div class="info">Please <a href="{{ route('login') }}" style="color: #E5BE01; text-decoration: underline;">login</a> to create and update your parcels.</div>
+                            @endguest
+
+                        </td>
+                        <td class="parcel-td-mobile">{{ $package->TrackingNumber }}</td>
+                        <td class="hide-on-mobile">{{ $package->Carrier }}</td>
+                        <td class="parcel-td-mobile">{{ $package->PackageValue }}</td>
+                        <td class="parcel-td-mobile">{!! nl2br(e($package->Description)) !!}</td>
+                        <td class="hide-on-mobile">
+                            @if(!empty($package->PackageInvoiceImage))
+                                <a href="{{ asset('storage/' . $package->PackageInvoiceImage) }}"><img src="{{ asset('storage/' . $package->PackageInvoiceImage) }}" alt="Invoice Image" class="package-image"></a>
+                            @else
+                                No image
+                            @endif
+                        </td>
+                        <td class="hide-on-mobile">
+                            @if(!empty($package->PackageImage))
+                                <a href="{{ asset('storage/' . $package->PackageImage) }}"><img src="{{ asset('storage/' . $package->PackageImage) }}" alt="Package Image" class="package-image"></a>
+                            @else
+                                No image
+                            @endif
+                        </td>
+                        <td class="parcel-td-mobile">
+
+                            @auth
+                                @if(auth()->user()->hasVerifiedEmail())
+                                    <a href="{{ url('/packages/edit/'.$package->id) }}">Edit</a>
+                                @else
+                                    <div class="info">Please verify your email to edit parcels.</div>
+                                @endif
+                            @endauth
+                            @guest
+                                <div class="info">Please <a href="{{ route('login') }}" style="color: #E5BE01; text-decoration: underline;">login</a> to edit parcels.</div>
+                            @endguest
+
+                        </td>
+                    </form>
+                </tr>
+                @endforeach
+
+            </table>
+        </div>
+    </div>
+@endforeach
+
+
+
+
+@endsection
